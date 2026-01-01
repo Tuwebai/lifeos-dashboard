@@ -89,10 +89,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const signInWithGoogle = async () => {
+        // En producción usamos el dominio configurado, en desarrollo usamos el origin actual
+        const redirectURL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? window.location.origin
+            : 'https://lifeos.automatizate.ar';
+
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: window.location.origin
+                redirectTo: redirectURL
             }
         });
         if (error) console.error('Error signing in:', error.message);
