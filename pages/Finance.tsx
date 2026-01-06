@@ -52,6 +52,14 @@ export const Finance: React.FC = () => {
     const [calendarViewDate, setCalendarViewDate] = useState(new Date(viewYear, viewMonth - 1, 1));
     const [txDate, setTxDate] = useState(new Date().toLocaleDateString('sv-SE'));
     const [showCustomDate, setShowCustomDate] = useState(false);
+    const [chartLineVisibility, setChartLineVisibility] = useState({
+        income: true,
+        expense: true,
+        investment: true,
+        balance: true,
+        movingAverage: true
+    });
+    const [chartMainView, setChartMainView] = useState<'flows' | 'balance'>('flows');
 
 
     // Security State
@@ -279,6 +287,15 @@ export const Finance: React.FC = () => {
             }
         }
 
+        // Calculate Moving Average (5-period window)
+        const windowSize = 5;
+        for (let i = 0; i < data.length; i++) {
+            const startIdx = Math.max(0, i - windowSize + 1);
+            const slice = data.slice(startIdx, i + 1);
+            const sum = slice.reduce((acc, curr) => acc + curr.cumulativeBalance, 0);
+            (data[i] as any).movingAverage = sum / slice.length;
+        }
+
         return data;
     }, [transactions, chartCustomStart, chartCustomEnd, chartGranularity, viewMonth, viewYear, weekRanges]);
 
@@ -298,8 +315,10 @@ export const Finance: React.FC = () => {
         const potentialExp = totalIncome * (ratio / 100);
         let assignedExp = potentialExp - totalGastos;
 
-        // Investment Base: (Income * InvRatio%) - Real Investment Movements
-        let assignedInv = (totalIncome * (invRatio / 100)) - totalInversiones;
+        // Investment Base: (Income * InvRatio%)
+        // Note: Real investment movements are now deducted immediately from the wallet, 
+        // so we don't subtract totalInversiones here to avoid double-deducting them from the wallet balance.
+        let assignedInv = (totalIncome * (invRatio / 100));
 
         // If expenses overflow, subtract from investment to keep Expense wallet at 0
         if (assignedExp < 0) {
@@ -344,8 +363,18 @@ export const Finance: React.FC = () => {
     };
 
     const deleteTransaction = async (id: string) => {
+        const txToDelete = transactions.find(t => t.id === id);
         const { error } = await supabase.from('finance_transactions').delete().eq('id', id);
-        if (!error) setTransactions(prev => prev.filter(t => t.id !== id));
+        if (!error) {
+            setTransactions(prev => prev.filter(t => t.id !== id));
+
+            // If it was an investment, refund the wallet
+            if (txToDelete?.type === 'investment') {
+                await updateSettings({
+                    wallet_investments: (settings.wallet_investments || 0) + Number(txToDelete.amount)
+                });
+            }
+        }
     };
 
     const addTransaction = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -365,6 +394,13 @@ export const Finance: React.FC = () => {
             setTransactions([data[0] as FinanceTransaction, ...transactions]);
             setIsTxModalOpen(false);
             setShowCustomDate(false);
+
+            // If it's an investment, deduct from the wallet immediately
+            if (modalType === 'investment') {
+                await updateSettings({
+                    wallet_investments: (settings.wallet_investments || 0) - Number(newTx.amount)
+                });
+            }
         }
     };
 
@@ -441,7 +477,7 @@ export const Finance: React.FC = () => {
                 </div>
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-white/5 shadow-soft border-l-4 border-l-primary">
                     <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Esta Semana (Neto)</p>
-                    <h4 className={`text-2xl font-black ${weekStats.net < 0 ? 'text-rose-500' : 'text-slate-700 dark:text-slate-200'}`}>
+                    <h4 className={`text-2xl font-black ${weekStats.net < 0 ? 'text-rose-500' : weekStats.net > 0 ? 'text-emerald-500' : 'text-slate-700 dark:text-slate-200'}`}>
                         <MoneyDisplay value={weekStats.net} showData={settings.finance_show_data} />
                     </h4>
                 </div>
@@ -662,11 +698,11 @@ export const Finance: React.FC = () => {
                         <h3 className="text-xl font-black text-slate-800 dark:text-white">Métricas Evolutivas</h3>
                         <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">Análisis de flujo de caja</p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex flex-wrap items-center gap-2">
                         <div className="flex bg-slate-50 dark:bg-slate-900/50 p-1 rounded-2xl border border-slate-100 dark:border-white/5">
                             <button
                                 onClick={() => setMetricsViewMode('chart')}
-                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${metricsViewMode === 'chart'
+                                className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${metricsViewMode === 'chart'
                                     ? 'bg-white dark:bg-slate-800 text-primary shadow-sm'
                                     : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
                                     }`}
@@ -675,7 +711,7 @@ export const Finance: React.FC = () => {
                             </button>
                             <button
                                 onClick={() => setMetricsViewMode('calendar')}
-                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${metricsViewMode === 'calendar'
+                                className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${metricsViewMode === 'calendar'
                                     ? 'bg-white dark:bg-slate-800 text-primary shadow-sm'
                                     : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
                                     }`}
@@ -683,6 +719,29 @@ export const Finance: React.FC = () => {
                                 Calendario
                             </button>
                         </div>
+
+                        {metricsViewMode === 'chart' && (
+                            <div className="flex bg-slate-50 dark:bg-slate-900/50 p-1 rounded-2xl border border-slate-100 dark:border-white/5">
+                                <button
+                                    onClick={() => setChartMainView('flows')}
+                                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${chartMainView === 'flows'
+                                        ? 'bg-white dark:bg-slate-800 text-emerald-500 shadow-sm'
+                                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                                        }`}
+                                >
+                                    Flujos
+                                </button>
+                                <button
+                                    onClick={() => setChartMainView('balance')}
+                                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${chartMainView === 'balance'
+                                        ? 'bg-white dark:bg-slate-800 text-blue-500 shadow-sm'
+                                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                                        }`}
+                                >
+                                    Balance
+                                </button>
+                            </div>
+                        )}
 
                         {metricsViewMode === 'chart' ? (
                             <>
@@ -711,7 +770,7 @@ export const Finance: React.FC = () => {
                                         <button
                                             key={g.id}
                                             onClick={() => setChartGranularity(g.id as any)}
-                                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${chartGranularity === g.id
+                                            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${chartGranularity === g.id
                                                 ? 'bg-white dark:bg-slate-800 text-primary shadow-sm'
                                                 : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
                                                 }`}
@@ -720,6 +779,8 @@ export const Finance: React.FC = () => {
                                         </button>
                                     ))}
                                 </div>
+
+
                             </>
                         ) : (
                             <div className="flex items-center gap-4 bg-slate-50 dark:bg-slate-900/50 p-1 rounded-2xl border border-slate-100 dark:border-white/5 animate-in fade-in slide-in-from-right-4">
@@ -744,16 +805,20 @@ export const Finance: React.FC = () => {
                                 <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                     <defs>
                                         <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
                                             <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                                         </linearGradient>
                                         <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.2} />
+                                            <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3} />
                                             <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
                                         </linearGradient>
                                         <linearGradient id="colorInvestment" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
+                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
                                             <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                        </linearGradient>
+                                        <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-slate-100 dark:text-white/5" />
@@ -774,27 +839,38 @@ export const Finance: React.FC = () => {
                                             if (active && payload && payload.length) {
                                                 const p = payload[0].payload;
                                                 return (
-                                                    <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/10 p-3 rounded-2xl shadow-premium backdrop-blur-md">
-                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 border-b border-slate-50 dark:border-white/5 pb-1">
+                                                    <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/10 p-4 rounded-2xl shadow-premium backdrop-blur-md min-w-[180px]">
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.1em] mb-3 border-b border-slate-50 dark:border-white/5 pb-2">
                                                             {label} {p.range ? `(${p.range})` : p.fullDate ? `(${p.fullDate.split('-').reverse().slice(0, 2).join('/')})` : ''}
                                                         </p>
-                                                        <div className="space-y-1">
-                                                            <div className="flex justify-between items-center gap-4">
-                                                                <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Ingresos</span>
-                                                                <span className="text-[11px] font-black text-emerald-500">${Number(p.income).toLocaleString()}</span>
-                                                            </div>
-                                                            <div className="flex justify-between items-center gap-4">
-                                                                <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500"><div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> Gastos</span>
-                                                                <span className="text-[11px] font-black text-rose-500">${Number(p.expense).toLocaleString()}</span>
-                                                            </div>
-                                                            <div className="flex justify-between items-center gap-4">
-                                                                <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Inversión</span>
-                                                                <span className="text-[11px] font-black text-indigo-500">${Number(p.investment).toLocaleString()}</span>
-                                                            </div>
-                                                            <div className="pt-1.5 mt-1 border-t border-slate-50 dark:border-white/5">
-                                                                <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-500/10 p-2 rounded-xl">
-                                                                    <span className="text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">Neto (Cartera)</span>
-                                                                    <span className="text-sm font-black text-blue-600 dark:text-blue-400">
+                                                        <div className="space-y-2">
+                                                            {chartLineVisibility.income && (
+                                                                <div className="flex justify-between items-center gap-4">
+                                                                    <span className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Ingresos</span>
+                                                                    <span className="text-[11px] font-black text-emerald-500">${Number(p.income).toLocaleString()}</span>
+                                                                </div>
+                                                            )}
+                                                            {chartLineVisibility.expense && (
+                                                                <div className="flex justify-between items-center gap-4">
+                                                                    <span className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest"><div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> Gastos</span>
+                                                                    <span className="text-[11px] font-black text-rose-500">${Number(p.expense).toLocaleString()}</span>
+                                                                </div>
+                                                            )}
+                                                            {chartLineVisibility.investment && (
+                                                                <div className="flex justify-between items-center gap-4">
+                                                                    <span className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Inversión</span>
+                                                                    <span className="text-[11px] font-black text-indigo-500">${Number(p.investment).toLocaleString()}</span>
+                                                                </div>
+                                                            )}
+                                                            <div className="pt-2 mt-2 border-t border-slate-100 dark:border-white/5">
+                                                                <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-500/10 p-2.5 rounded-xl border border-blue-100/50 dark:border-blue-500/20">
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-[0.1em]">Balance Total</span>
+                                                                        {chartLineVisibility.movingAverage && (
+                                                                            <span className="text-[8px] font-bold text-blue-400 dark:text-blue-500 uppercase">Media: ${Math.round(p.movingAverage).toLocaleString()}</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <span className="text-xs font-black text-blue-600 dark:text-blue-400">
                                                                         ${p.cumulativeBalance.toLocaleString()}
                                                                     </span>
                                                                 </div>
@@ -806,9 +882,37 @@ export const Finance: React.FC = () => {
                                             return null;
                                         }}
                                     />
-                                    <Area type="monotone" dataKey="income" stroke="#10b981" strokeWidth={4} fillOpacity={1} fill="url(#colorIncome)" />
-                                    <Area type="monotone" dataKey="expense" stroke="#f43f5e" strokeWidth={4} fillOpacity={1} fill="url(#colorExpense)" />
-                                    <Area type="monotone" dataKey="investment" stroke="#6366f1" strokeWidth={4} fillOpacity={1} fill="url(#colorInvestment)" />
+                                    {chartMainView === 'flows' ? (
+                                        <>
+                                            {chartLineVisibility.income && <Area type="monotone" dataKey="income" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorIncome)" />}
+                                            {chartLineVisibility.expense && <Area type="monotone" dataKey="expense" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorExpense)" />}
+                                            {chartLineVisibility.investment && <Area type="monotone" dataKey="investment" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorInvestment)" />}
+                                        </>
+                                    ) : (
+                                        <>
+                                            {chartLineVisibility.balance && (
+                                                <Area
+                                                    type="monotone"
+                                                    dataKey="cumulativeBalance"
+                                                    stroke="#0070f3"
+                                                    strokeWidth={4}
+                                                    fillOpacity={1}
+                                                    fill="url(#colorBalance)"
+                                                />
+                                            )}
+                                            {chartLineVisibility.movingAverage && (
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="movingAverage"
+                                                    stroke="#3b82f6"
+                                                    strokeWidth={2}
+                                                    strokeOpacity={0.5}
+                                                    dot={false}
+                                                />
+                                            )}
+                                        </>
+                                    )}
+
                                 </AreaChart>
                             </ResponsiveContainer>
                         ) : (

@@ -98,4 +98,10 @@ export interface UserSettings {
     wallet_expenses?: number;
     wallet_investments?: number;
     finance_show_data?: boolean;
+    finance_chart_visible_lines?: {
+        income: boolean;
+        expense: boolean;
+        investment: boolean;
+        balance: boolean;
+    };
 }
