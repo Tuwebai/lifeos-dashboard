@@ -20,6 +20,8 @@ interface AuthContextType {
     profile: Profile | null;
     loading: boolean;
     signInWithGoogle: () => Promise<void>;
+    signInWithEmail: (email: string, password: string) => Promise<void>;
+    updatePassword: (password: string) => Promise<void>;
     signOut: () => Promise<void>;
     updateProfile: (updates: Partial<Profile>) => Promise<void>;
 }
@@ -103,12 +105,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (error) console.error('Error signing in:', error.message);
     };
 
+    const signInWithEmail = async (email: string, password: string) => {
+        const { error } = await supabase.auth.signInWithPassword({
+            email,
+            password
+        });
+        if (error) throw error;
+    };
+
+    const updatePassword = async (password: string) => {
+        const { error } = await supabase.auth.updateUser({
+            password
+        });
+        if (error) throw error;
+    };
+
     const signOut = async () => {
         await supabase.auth.signOut();
     };
 
     return (
-        <AuthContext.Provider value={{ user, session, profile, loading, signInWithGoogle, signOut, updateProfile }}>
+        <AuthContext.Provider value={{ user, session, profile, loading, signInWithGoogle, signInWithEmail, updatePassword, signOut, updateProfile }}>
             {children}
         </AuthContext.Provider>
     );

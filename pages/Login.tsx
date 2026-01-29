@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 export const Login: React.FC = () => {
-    const { signInWithGoogle, loading } = useAuth();
+    const { signInWithGoogle, signInWithEmail, loading } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [errorMsg, setErrorMsg] = useState('');
 
     const handleGoogleLogin = async () => {
         setIsLoading(true);
@@ -11,6 +14,20 @@ export const Login: React.FC = () => {
             await signInWithGoogle();
         } catch (error) {
             console.error(error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleEmailLogin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setErrorMsg('');
+        try {
+            await signInWithEmail(email, password);
+        } catch (error: any) {
+            console.error(error);
+            setErrorMsg(error.message || 'Error al iniciar sesión');
         } finally {
             setIsLoading(false);
         }
@@ -49,6 +66,36 @@ export const Login: React.FC = () => {
                             </>
                         )}
                     </button>
+
+                    <div className="relative py-4">
+                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200 dark:border-slate-700"></div></div>
+                        <div className="relative flex justify-center text-xs uppercase"><span className="bg-white dark:bg-slate-900 px-2 text-slate-400">O ingresa con tu cuenta</span></div>
+                    </div>
+
+                    <form onSubmit={handleEmailLogin} className="space-y-3">
+                        <input
+                            type="email"
+                            placeholder="Correo electrónico"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-primary text-slate-800 dark:text-white"
+                        />
+                        <input
+                            type="password"
+                            placeholder="Contraseña"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-primary text-slate-800 dark:text-white"
+                        />
+                        {errorMsg && <p className="text-xs text-rose-500 font-bold">{errorMsg}</p>}
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className={`w-full py-4 bg-slate-800 dark:bg-slate-700 text-white font-bold rounded-2xl shadow-sm hover:shadow-md active:scale-95 transition-all flex items-center justify-center gap-3 ${(isLoading) ? 'cursor-wait opacity-70' : ''}`}
+                        >
+                            {isLoading ? 'Cargando...' : 'Iniciar Sesión'}
+                        </button>
+                    </form>
                 </div>
 
                 <p className="text-center mt-10 text-[10px] text-slate-400 uppercase tracking-widest font-medium">

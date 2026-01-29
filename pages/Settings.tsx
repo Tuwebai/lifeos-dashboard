@@ -6,7 +6,7 @@ import { supabase } from '../services/supabase';
 import { FinanceCategory } from '../types';
 
 export const Settings: React.FC = () => {
-    const { user, signOut } = useAuth();
+    const { user, signOut, updatePassword } = useAuth();
     const { settings, updateSettings, addQuote, deleteQuote } = useSettings();
     const [name, setName] = useState(settings.name);
     const [location, setLocation] = useState(settings.location);
@@ -24,6 +24,30 @@ export const Settings: React.FC = () => {
     const [newCatColor, setNewCatColor] = useState('#3b82f6');
     const [financeRatioLimit, setFinanceRatioLimit] = useState(settings.finance_ratio_limit || 30);
     const [showFinancePassword, setShowFinancePassword] = useState(false);
+
+    // Account Password State
+    const [accountPassword, setAccountPassword] = useState('');
+    const [passwordMsg, setPasswordMsg] = useState('');
+
+    const handleUpdatePassword = async () => {
+        if (!accountPassword || accountPassword.length < 6) {
+            setPasswordMsg('Error: La contraseña debe tener al menos 6 caracteres.');
+            return;
+        }
+        setIsSaving(true);
+        setPasswordMsg('');
+        try {
+            await updatePassword(accountPassword);
+            setPasswordMsg('Contraseña actualizada correctamente.');
+            setAccountPassword('');
+            setTimeout(() => setPasswordMsg(''), 3000);
+        } catch (error: any) {
+            console.error(error);
+            setPasswordMsg('Error: ' + error.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     // Update local state when settings change (e.g. on initial load from DB)
     useEffect(() => {
@@ -279,7 +303,54 @@ export const Settings: React.FC = () => {
 
                 {/* Columna Derecha */}
                 <div className="space-y-8">
-                    {/* Tarjeta de Seguridad Finanzas (NEW) */}
+                    {/* Tarjeta de Seguridad de Cuenta (NEW) */}
+                    <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-soft">
+                        <div className="flex items-center gap-4 mb-8">
+                            <div className="w-12 h-12 rounded-2xl bg-violet-100 dark:bg-violet-900/30 text-violet-500 flex items-center justify-center">
+                                <span className="material-icons-round">password</span>
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800 dark:text-white">Contraseña de Acceso</h3>
+                                <p className="text-xs text-slate-400">Establece una contraseña para entrar sin Google.</p>
+                            </div>
+                        </div>
+
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            setIsSaving(true);
+                            // @ts-ignore
+                            const newPass = e.target.elements.newPass.value;
+                            // @ts-ignore
+                            const { updatePassword } = useAuth(); // We need to access context inside component, but doing it inline is messy.
+                            // Better approach: use state for password input and handle externally.
+                        }}>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 ml-1">Nueva Contraseña</label>
+                                    <input
+                                        type="password"
+                                        id="account-pass"
+                                        placeholder="Mínimo 6 caracteres"
+                                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border-none rounded-2xl text-slate-700 dark:text-white font-bold focus:ring-2 focus:ring-primary outline-none transition-all"
+                                        onChange={(e) => setAccountPassword(e.target.value)}
+                                        value={accountPassword}
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleUpdatePassword}
+                                    disabled={isSaving || !accountPassword}
+                                    className={`w-full py-4 bg-violet-500 hover:bg-violet-600 text-white font-bold rounded-2xl shadow-lg shadow-violet-500/20 transition-all active:scale-95 flex items-center justify-center gap-2 ${(isSaving || !accountPassword) ? 'opacity-70' : ''}`}
+                                >
+                                    {isSaving ? <span className="material-icons-round animate-spin">sync</span> : <span className="material-icons-round">save</span>}
+                                    Actualizar Contraseña
+                                </button>
+                                {passwordMsg && <p className={`text-xs font-bold text-center ${passwordMsg.includes('Error') ? 'text-rose-500' : 'text-emerald-500'}`}>{passwordMsg}</p>}
+                            </div>
+                        </form>
+                    </div>
+
+                    {/* Tarjeta de Seguridad Finanzas (EXISTING) */}
                     <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-soft">
                         <div className="flex items-center gap-4 mb-8">
                             <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-500 flex items-center justify-center">
