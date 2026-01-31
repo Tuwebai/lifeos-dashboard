@@ -188,8 +188,12 @@ export const Finance: React.FC = () => {
 
     const chartData = useMemo(() => {
         let granularity: 'day' | 'week' | 'month' = chartGranularity;
-        const startDate = new Date(chartCustomStart);
-        const endDate = new Date(chartCustomEnd);
+        const parseLocal = (dateStr: string) => {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        };
+        const startDate = parseLocal(chartCustomStart);
+        const endDate = parseLocal(chartCustomEnd);
 
         // Calculate Initial Balance (Historical net before start date)
         const initialBalance = transactions.filter(t => {
@@ -207,7 +211,11 @@ export const Finance: React.FC = () => {
 
         if (granularity === 'day') {
             while (curr <= endDate) {
-                const dateStr = curr.toISOString().split('T')[0];
+                const dateStr = [
+                    curr.getFullYear(),
+                    String(curr.getMonth() + 1).padStart(2, '0'),
+                    String(curr.getDate()).padStart(2, '0')
+                ].join('-');
                 const dayTxs = transactions.filter(t => t.date === dateStr);
                 const income = dayTxs.filter(t => t.type === 'income').reduce((acc, t) => acc + Number(t.amount), 0);
                 const expense = dayTxs.filter(t => t.type === 'expense').reduce((acc, t) => acc + Number(t.amount), 0);
@@ -263,7 +271,8 @@ export const Finance: React.FC = () => {
                 const actualEnd = weekEnd > endDate ? endDate : weekEnd;
 
                 const weekTxs = transactions.filter(t => {
-                    const txDate = new Date(t.date);
+                    const [ty, tm, td] = t.date.split('-').map(Number);
+                    const txDate = new Date(ty, tm - 1, td);
                     return txDate >= curr && txDate <= actualEnd;
                 });
 
